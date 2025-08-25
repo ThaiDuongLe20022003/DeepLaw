@@ -1,0 +1,6 @@
+chainlit
+ollama
+llama-index
+sentence-transformers
+llama-index-llms-ollama
+llama_index.embeddings.huggingface
