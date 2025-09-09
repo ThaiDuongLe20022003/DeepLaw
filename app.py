@@ -8,8 +8,6 @@ from llama_index.core.postprocessor import SentenceTransformerRerank
 from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings
-from llama_index.core.storage.chat_store import SimpleChatStore
-from llama_index.core.llms import ChatMessage
 import time
 import json
 from datetime import datetime
@@ -20,46 +18,25 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 # Configure embedding model
-Settings.embed_model = HuggingFaceEmbedding(model_name = "BAAI/bge-small-en-v1.5")
+Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
-# Available chatbot models
-CHATBOT_MODELS = [
-    "deepseek-r1:1.5b",
-    "gpt-oss:20b", 
-    "gemma3:270m",
-    "qwen3:0.6b",
-    "llama3.1:8b",
-    "mistral:7b",
-    "phi3:3.8b",
-    "cogito:3b",
-    "falcon3:1b",
-    "command-r7b:7b"
-]
+# Initialize Ollama LLMs - Multiple judge models for diverse evaluation
+llm = Ollama(model="gemma3:270m", request_timeout=120.0)
 
-# Default chatbot model
-DEFAULT_CHATBOT_MODEL = "gemma:270m"
-
-# Available judge models (all models except the chatbot model)
-JUDGE_MODELS_AVAILABLE = [
-    "deepseek-r1:1.5b",
-    "gpt-oss:20b", 
-    "qwen3:0.6b",
-    "llama3.1:8b",
-    "mistral:7b",
-    "phi3:3.8b",
-    "cogito:3b",
-    "falcon3:1b",
-    "command-r7b:7b"
-]
+# Multiple judge models for comprehensive evaluation
+judge_models = {
+    "llama3.1_8b": Ollama(model="llama3.1:8b", request_timeout=180.0),
+    "mixtral_8x7b": Ollama(model="mixtral:8x7b", request_timeout=180.0),
+    "qwen2_7b": Ollama(model="qwen2:7b", request_timeout=180.0),
+    "gemma2_9b": Ollama(model="gemma2:9b", request_timeout=180.0)
+}
 
 # Configuration paths
 STORAGE_DIR = "./storage"
 METRICS_DIR = "./metrics"
-CHAT_STORE_PATH = "./chat/chat_store.json"
 
 # Ensure directories exist
-os.makedirs(METRICS_DIR, exist_ok = True)
-os.makedirs(os.path.dirname(CHAT_STORE_PATH), exist_ok = True)
+os.makedirs(METRICS_DIR, exist_ok=True)
 
 @dataclass
 class JudgeEvaluation:
@@ -101,7 +78,7 @@ class MultiJudgeEvaluator:
     
     def __init__(self, judge_models: Dict[str, Ollama]):
         self.judge_models = judge_models
-        self.executor = ThreadPoolExecutor(max_workers = 4)
+        self.executor = ThreadPoolExecutor(max_workers=4)
         
         self.evaluation_prompt_template = """As an expert AI response evaluator, provide a detailed analysis:
 
@@ -184,9 +161,9 @@ Respond ONLY with valid JSON:
         """Evaluate response with a specific judge model"""
         try:
             prompt = self.evaluation_prompt_template.format(
-                query = query,
-                context = context[:1500],
-                response = response
+                query=query,
+                context=context[:1500],
+                response=response
             )
             
             # Run evaluation in thread pool
@@ -198,33 +175,33 @@ Respond ONLY with valid JSON:
             overall_score = eval_data.get('overall_score', 5.2)
             
             return JudgeEvaluation(
-                judge_model = judge_name,
-                faithfulness = eval_data.get('faithfulness', 5.0),
-                groundedness = eval_data.get('groundedness', 5.0),
-                factual_consistency = eval_data.get('factual_consistency', 5.0),
-                relevance = eval_data.get('relevance', 5.0),
-                completeness = eval_data.get('completeness', 5.0),
-                fluency = eval_data.get('fluency', 6.0),
-                overall_score = overall_score,
-                evaluation_notes = eval_data.get('detailed_notes', 'No detailed notes provided'),
-                confidence = eval_data.get('confidence', 0.5),
-                rating_category = self._get_rating_category(overall_score)
+                judge_model=judge_name,
+                faithfulness=eval_data.get('faithfulness', 5.0),
+                groundedness=eval_data.get('groundedness', 5.0),
+                factual_consistency=eval_data.get('factual_consistency', 5.0),
+                relevance=eval_data.get('relevance', 5.0),
+                completeness=eval_data.get('completeness', 5.0),
+                fluency=eval_data.get('fluency', 6.0),
+                overall_score=overall_score,
+                evaluation_notes=eval_data.get('detailed_notes', 'No detailed notes provided'),
+                confidence=eval_data.get('confidence', 0.5),
+                rating_category=self._get_rating_category(overall_score)
             )
             
         except Exception as e:
             print(f"Evaluation error from {judge_name}: {e}")
             return JudgeEvaluation(
-                judge_model = judge_name,
-                faithfulness = 5.0,
-                groundedness = 5.0,
-                factual_consistency = 5.0,
-                relevance = 5.0,
-                completeness = 5.0,
-                fluency = 6.0,
-                overall_score = 5.2,
-                evaluation_notes = f"Evaluation error: {str(e)}",
-                confidence = 0.3,
-                rating_category = "Poor / Weak"
+                judge_model=judge_name,
+                faithfulness=5.0,
+                groundedness=5.0,
+                factual_consistency=5.0,
+                relevance=5.0,
+                completeness=5.0,
+                fluency=6.0,
+                overall_score=5.2,
+                evaluation_notes=f"Evaluation error: {str(e)}",
+                confidence=0.3,
+                rating_category="Poor / Weak"
             )
     
     def _generate_evaluation_summary(self, judge_evaluations: List[JudgeEvaluation]) -> str:
@@ -277,14 +254,14 @@ Respond ONLY with valid JSON:
         evaluation_summary = self._generate_evaluation_summary(judge_evaluations)
         
         return LLMEvaluation(
-            judges = judges_dict,
-            evaluation_summary = evaluation_summary
+            judges=judges_dict,
+            evaluation_summary=evaluation_summary
         )
 
 class MetricsCollector:
     """Collects and manages LLM performance metrics with detailed multi-judge evaluation"""
     
-    def __init__(self, metrics_dir: str = METRICS_DIR, judge_models = None):
+    def __init__(self, metrics_dir: str = METRICS_DIR, judge_models=None):
         self.metrics_dir = metrics_dir
         self.current_session_metrics: List[LLMMetrics] = []
         self.multi_judge_evaluator = MultiJudgeEvaluator(judge_models) if judge_models else None
@@ -302,16 +279,16 @@ class MetricsCollector:
             )
         
         metrics = LLMMetrics(
-            timestamp = datetime.now().isoformat(),
-            query = query,
-            response = response,
-            context = context[:1000],
-            response_time = response_time,
-            token_count = token_count,
-            tokens_per_second = tokens_per_second,
-            model = model,
-            session_id = session_id,
-            evaluation = evaluation
+            timestamp=datetime.now().isoformat(),
+            query=query,
+            response=response,
+            context=context[:1000],
+            response_time=response_time,
+            token_count=token_count,
+            tokens_per_second=tokens_per_second,
+            model=model,
+            session_id=session_id,
+            evaluation=evaluation
         )
         
         self.current_session_metrics.append(metrics)
@@ -367,7 +344,7 @@ class MetricsCollector:
             metrics_dicts.append(metric_data)
         
         with open(filepath, 'w') as f:
-            json.dump(metrics_dicts, f, indent = 2, ensure_ascii = False)
+            json.dump(metrics_dicts, f, indent=2, ensure_ascii=False)
         
         print(f"Detailed multi-judge metrics saved to {filepath}")
         return filepath
@@ -387,7 +364,7 @@ class MetricsCollector:
             "evaluated_responses": len(evaluations),
             "avg_response_time": round(sum(response_times) / len(response_times), 2),
             "total_tokens_generated": sum(token_counts),
-            "judge_models": list(self.multi_judge_evaluator.judge_models.keys()) if evaluations and self.multi_judge_evaluator else []
+            "judge_models": list(judge_models.keys()) if evaluations else []
         }
         
         if evaluations:
@@ -445,6 +422,7 @@ class MetricsCollector:
             "< 5.0: Poor / Weak",
             "",
             "NOTE: Each judge provides independent evaluation without averaging",
+            f"Main Model: {llm.model}",
             f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "========================================="
         ])
@@ -453,33 +431,30 @@ class MetricsCollector:
 
 def load_index():
     """Loads the pre-built vector index from storage"""
-    storage_context = StorageContext.from_defaults(persist_dir = STORAGE_DIR)
+    storage_context = StorageContext.from_defaults(persist_dir=STORAGE_DIR)
     return load_index_from_storage(storage_context)
 
-def create_query_engine(index, model_name: str = DEFAULT_CHATBOT_MODEL):
-    """Creates an optimized query engine with specified model"""
-    base_retriever = index.as_retriever(similarity_top_k = 6)
+def create_query_engine(index):
+    """Creates an optimized query engine"""
+    base_retriever = index.as_retriever(similarity_top_k=6)
     
     retriever = AutoMergingRetriever(
         base_retriever, 
-        storage_context = index.storage_context, 
-        verbose = False
+        storage_context=index.storage_context, 
+        verbose=False
     )
     
     reranker = SentenceTransformerRerank(
-        top_n = 3, 
-        model = "BAAI/bge-reranker-base"
+        top_n=3, 
+        model="BAAI/bge-reranker-base"
     )
     
-    # Use the specified model for the chatbot
-    chatbot_llm = Ollama(model=model_name, request_timeout = 120.0)
-    
     return RetrieverQueryEngine.from_args(
-        retriever = retriever,
-        node_postprocessors = [reranker],
-        streaming = True,
-        llm = chatbot_llm
-    ), chatbot_llm
+        retriever=retriever,
+        node_postprocessors=[reranker],
+        streaming=True,
+        llm=llm
+    )
 
 def count_tokens(text: str) -> int:
     """Simple token counter"""
@@ -498,108 +473,19 @@ def extract_context_from_response(response) -> str:
     except:
         return "Context extraction failed"
 
-def get_available_judge_models(chatbot_model: str) -> Dict[str, Ollama]:
-    """Get available judge models that are different from chatbot model"""
-    # Filter out judge models that are the same as chatbot model
-    available_judges = {}
-    
-    for judge_model in JUDGE_MODELS_AVAILABLE:
-        # Basic check to avoid same model (this is a simple heuristic)
-        if (judge_model != chatbot_model and 
-            not judge_model.startswith(chatbot_model.split(':')[0]) and
-            not chatbot_model.startswith(judge_model.split(':')[0])):
-            try:
-                available_judges[judge_model] = Ollama(model = judge_model, request_timeout = 180.0)
-                print(f"✓ Added judge model: {judge_model}")
-            except Exception as e:
-                print(f"✗ Failed to load judge model {judge_model}: {e}")
-    
-    # Fallback if no judges available
-    if not available_judges:
-        print("Warning: No judge models available, using fallback")
-        available_judges["llama3.1:8b"] = Ollama(model = "llama3.1:8b", request_timeout = 180.0)
-    
-    return available_judges
-
-def load_chat_store():
-    """Load chat store from file or create new one"""
-    chat_store = SimpleChatStore()
-    
-    # Create chat directory if it doesn't exist
-    os.makedirs(os.path.dirname(CHAT_STORE_PATH), exist_ok = True)
-    
-    # Load existing chat history if available
-    if os.path.exists(CHAT_STORE_PATH) and os.path.getsize(CHAT_STORE_PATH) > 0:
-        try:
-            chat_store = SimpleChatStore.from_persist_path(CHAT_STORE_PATH)
-            print(f"Loaded existing chat history from {CHAT_STORE_PATH}")
-        except Exception as e:
-            print(f"Failed to load chat history: {e}, creating new chat store")
-            chat_store = SimpleChatStore()
-    
-    return chat_store
-
-def format_history(messages: list[ChatMessage]) -> str:
-    """Format chat history for context (from your app.py)"""
-    history_str = ""
-    for msg in messages:
-        if msg.role == "user":
-            history_str += f"User: {msg.content}\n"
-        elif msg.role == "assistant":
-            history_str += f"Assistant: {msg.content}\n"
-    return history_str.strip()
-
 @cl.on_chat_start
 async def init_chat():
     """Initializes chat session with detailed multi-judge evaluation"""
-    # Get chatbot model from user session or use default
-    chatbot_model = cl.user_session.get("chatbot_model", DEFAULT_CHATBOT_MODEL)
-    
     index = load_index()
-    query_engine, chatbot_llm = create_query_engine(index, chatbot_model)
+    query_engine = create_query_engine(index)
+    chat_memory = ChatMemoryBuffer.from_defaults(token_limit=1500, llm=llm)
+    metrics_collector = MetricsCollector(judge_models=judge_models)
     
-    # Load chat store and setup memory
-    chat_store = load_chat_store()
-    
-    chat_memory = ChatMemoryBuffer.from_defaults(
-        token_limit = 1500,
-        chat_store = chat_store,
-        chat_store_key = "user_session",
-        llm = chatbot_llm
-    )
-    
-    # Get judge models that are different from chatbot model
-    judge_models = get_available_judge_models(chatbot_model)
-    metrics_collector = MetricsCollector(judge_models = judge_models)
-    
-    # Store objects in user session
     cl.user_session.set("query_engine", query_engine)
     cl.user_session.set("chat_memory", chat_memory)
-    cl.user_session.set("chat_store", chat_store)
     cl.user_session.set("metrics_collector", metrics_collector)
-    cl.user_session.set("chatbot_model", chatbot_model)
-    cl.user_session.set("chatbot_llm", chatbot_llm)
     
-    # Show model information
-    model_info = [
-        "=== CHATBOT CONFIGURATION ===",
-        f"🤖 Chatbot Model: {chatbot_model}",
-        f"🧠 Judge Models: {', '.join(judge_models.keys())}",
-        f"📊 Evaluation Scale: 0.0 - 10.0",
-        f"💾 Chat History: {CHAT_STORE_PATH}",
-        "",
-        "Available commands:",
-        "/show_models - Show available models",
-        "/switch_model <model_name> - Switch chatbot model",
-        "/show_metrics - Show evaluation metrics",
-        "/evaluate_last - Evaluate last response",
-        "======================================"
-    ]
-    
-    await cl.Message(content = "\n".join(model_info)).send()
-    
-    # Add initial system message to chat memory
-    chat_memory.put(ChatMessage(role = "system", content = "Hello! How can I help you today?"))
+    chat_memory.put("System: Hello! How can I help you today?")
 
 @cl.on_chat_resume
 async def resume_chat():
@@ -608,54 +494,34 @@ async def resume_chat():
 
 @cl.on_chat_end
 async def on_chat_end():
-    """Handle chat session end - save detailed metrics and chat history"""
+    """Handle chat session end - save detailed metrics"""
     metrics_collector = cl.user_session.get("metrics_collector")
-    chat_store = cl.user_session.get("chat_store")
-    
     if metrics_collector and metrics_collector.current_session_metrics:
         metrics_collector.save_metrics_to_file()
         print(metrics_collector.generate_report())
-    
-    # Persist chat history
-    if chat_store:
-        try:
-            chat_store.persist(persist_path = CHAT_STORE_PATH)
-            print(f"Chat history saved to {CHAT_STORE_PATH}")
-        except Exception as e:
-            print(f"Failed to save chat history: {e}")
 
 @cl.password_auth_callback
 def authenticate(username: str, password: str):
     """Simple password-based authentication"""
     valid_users = {"admin": "secret"}
     if username in valid_users and valid_users[username] == password:
-        return cl.User(identifier = username)
+        return cl.User(identifier=username)
     return None
 
 @cl.on_message
 async def handle_message(message: cl.Message):
     """Processes incoming messages with detailed multi-judge evaluation"""
-    # Check if this is a command
-    if message.content.startswith('/'):
-        await handle_command(message)
-        return
-    
     query_engine = cl.user_session.get("query_engine")
     chat_memory = cl.user_session.get("chat_memory")
     metrics_collector = cl.user_session.get("metrics_collector")
-    chat_store = cl.user_session.get("chat_store")
     
-    # Add user message to chat memory
-    chat_memory.put(ChatMessage(role = "user", content = message.content))
+    try:
+        history_text = chat_memory.get()
+        full_prompt = f"{history_text}\nUser: {message.content}"
+    except Exception as e:
+        full_prompt = f"User: {message.content}"
     
-    # Get conversation history for context
-    history_messages = chat_memory.get_all()
-    history_str = format_history(history_messages)
-    
-    # Build prompt with history
-    full_prompt = f"{history_str}\nUser: {message.content}"
-    
-    reply = cl.Message(content = "")
+    reply = cl.Message(content="")
     await reply.send()
     
     start_time = time.time()
@@ -675,136 +541,145 @@ async def handle_message(message: cl.Message):
     
     context = extract_context_from_response(response)
     
-    # Add assistant response to chat memory
-    chat_memory.put(ChatMessage(role = "assistant", content = full_response))
-    
-    # Record metrics with evaluation
     if metrics_collector:
         session_id = cl.user_session.get("id", "unknown_session")
-        chatbot_model = cl.user_session.get("chatbot_model", DEFAULT_CHATBOT_MODEL)
         await metrics_collector.record_metrics(
-            query = message.content,
-            response = full_response,
-            context = context,
-            response_time = response_time,
-            token_count = token_count,
-            model = chatbot_model,
-            session_id = session_id
+            query=message.content,
+            response=full_response,
+            context=context,
+            response_time=response_time,
+            token_count=token_count,
+            model="gemma3:270m",
+            session_id=session_id
         )
     
-    # Persist chat history after each message
-    try:
-        chat_store.persist(persist_path = CHAT_STORE_PATH)
-    except Exception as e:
-        print(f"Failed to persist chat history: {e}")
+    chat_memory.put(f"User: {message.content}")
+    chat_memory.put(f"Assistant: {full_response}")
 
-async def handle_command(message: cl.Message):
-    """Handle slash commands"""
-    command = message.content.lower().strip()
-    
-    if command == "/show_models":
-        models_list = [
-            "=== AVAILABLE CHATBOT MODELS ===",
-            *[f"• {model}" for model in CHATBOT_MODELS],
-            "",
-            "=== AVAILABLE JUDGE MODELS ===",
-            *[f"• {model}" for model in JUDGE_MODELS_AVAILABLE],
-            "",
-            "Usage: /switch_model <model_name>",
-            "Example: /switch_model llama3.1:8b",
-            "======================================"
-        ]
-        await cl.Message(content="\n".join(models_list)).send()
-    
-    elif command.startswith("/switch_model"):
-        parts = command.split()
-        if len(parts) >= 2:
-            new_model = parts[1]
-            if new_model in CHATBOT_MODELS:
-                cl.user_session.set("chatbot_model", new_model)
-                await cl.Message(content=f"✅ Chatbot model switched to: {new_model}\nPlease refresh the chat to apply changes.").send()
-            else:
-                await cl.Message(content=f"❌ Model not available: {new_model}\nUse /show_models to see available models.").send()
-        else:
-            await cl.Message(content="❌ Usage: /switch_model <model_name>").send()
-    
-    elif command == "/show_metrics":
-        metrics_collector = cl.user_session.get("metrics_collector")
-        if metrics_collector:
-            report = metrics_collector.generate_report()
-            await cl.Message(content=f"```\n{report}\n```").send()
-        else:
-            await cl.Message(content="No evaluation metrics available yet.").send()
-    
-    elif command == "/evaluate_last":
-        metrics_collector = cl.user_session.get("metrics_collector")
-        if metrics_collector and metrics_collector.current_session_metrics:
-            last_metric = metrics_collector.current_session_metrics[-1]
-            if last_metric.evaluation:
-                eval_data = last_metric.evaluation
-                
-                evaluation = [
-                    "=== DETAILED MULTI-JUDGE EVALUATION ===",
-                    f"Query: {last_metric.query[:100]}...",
-                    f"Chatbot Model: {last_metric.model}",
-                    f"Response Preview: {last_metric.response[:200]}...",
-                    "",
-                    "SUMMARY:",
-                    eval_data.evaluation_summary,
-                    "",
-                    "=== DETAILED SCORES BY JUDGE ==="
-                ]
-                
-                for judge_name, judge_eval in eval_data.judges.items():
-                    evaluation.extend([
-                        f"",
-                        f"🧠 JUDGE: {judge_name}",
-                        f"   Overall: {judge_eval.overall_score:.1f}/10.0 ({judge_eval.rating_category})",
-                        f"   Confidence: {judge_eval.confidence:.1f}",
-                        f"   Faithfulness: {judge_eval.faithfulness:.1f}/10.0",
-                        f"   Groundedness: {judge_eval.groundedness:.1f}/10.0",
-                        f"   Factual Consistency: {judge_eval.factual_consistency:.1f}/10.0",
-                        f"   Relevance: {judge_eval.relevance:.1f}/10.0",
-                        f"   Completeness: {judge_eval.completeness:.1f}/10.0",
-                        f"   Fluency: {judge_eval.fluency:.1f}/10.0",
-                        f"   ─────────────────────────"
-                    ])
-                
-                evaluation.extend([
-                    "",
-                    "RATING SCALE:",
-                    "9.0 – 10.0: Excellent",
-                    "8.0 – 8.9: Good", 
-                    "6.5 – 7.9: Fair",
-                    "5.0 – 6.4: Average",
-                    "< 5.0: Poor / Weak",
-                    "=========================================="
-                ])
-                
-                await cl.Message(content = f"```\n{'\n'.join(evaluation)}\n```").send()
-            else:
-                await cl.Message(content = "No evaluation available for last response.").send()
-        else:
-            await cl.Message(content = "No responses to evaluate yet.").send()
-    
+@cl.action_callback("show_metrics")
+async def on_action_show_metrics(action: cl.Action):
+    """Action to show current evaluation metrics"""
+    metrics_collector = cl.user_session.get("metrics_collector")
+    if metrics_collector:
+        report = metrics_collector.generate_report()
+        await cl.Message(content=f"```\n{report}\n```").send()
     else:
-        await cl.Message(content = "❌ Unknown command. Available commands: /show_models, /switch_model, /show_metrics, /evaluate_last").send()
+        await cl.Message(content="No evaluation metrics available yet.").send()
+
+@cl.action_callback("save_metrics")
+async def on_action_save_metrics(action: cl.Action):
+    """Action to save metrics to file"""
+    metrics_collector = cl.user_session.get("metrics_collector")
+    if metrics_collector and metrics_collector.current_session_metrics:
+        filename = metrics_collector.save_metrics_to_file()
+        await cl.Message(content=f"Detailed multi-judge evaluation saved to: {filename}").send()
+    else:
+        await cl.Message(content="No metrics to save.").send()
+
+@cl.action_callback("evaluate_last")
+async def on_action_evaluate_last(action: cl.Action):
+    """Action to show detailed evaluation of last response"""
+    metrics_collector = cl.user_session.get("metrics_collector")
+    if metrics_collector and metrics_collector.current_session_metrics:
+        last_metric = metrics_collector.current_session_metrics[-1]
+        if last_metric.evaluation:
+            eval_data = last_metric.evaluation
+            
+            # Create detailed evaluation message
+            evaluation = [
+                "=== DETAILED MULTI-JUDGE EVALUATION ===",
+                f"Query: {last_metric.query[:100]}...",
+                f"Response Preview: {last_metric.response[:200]}...",
+                "",
+                "SUMMARY:",
+                eval_data.evaluation_summary,
+                "",
+                "=== DETAILED SCORES BY JUDGE ==="
+            ]
+            
+            # Add detailed scores for each judge
+            for judge_name, judge_eval in eval_data.judges.items():
+                evaluation.extend([
+                    f"",
+                    f"🧠 JUDGE: {judge_name}",
+                    f"   Overall: {judge_eval.overall_score:.1f}/10.0 ({judge_eval.rating_category})",
+                    f"   Confidence: {judge_eval.confidence:.1f}",
+                    f"   Faithfulness: {judge_eval.faithfulness:.1f}/10.0",
+                    f"   Groundedness: {judge_eval.groundedness:.1f}/10.0",
+                    f"   Factual Consistency: {judge_eval.factual_consistency:.1f}/10.0",
+                    f"   Relevance: {judge_eval.relevance:.1f}/10.0",
+                    f"   Completeness: {judge_eval.completeness:.1f}/10.0",
+                    f"   Fluency: {judge_eval.fluency:.1f}/10.0",
+                    f"   Notes: {judge_eval.evaluation_notes[:150]}...",
+                    f"   ─────────────────────────"
+                ])
+            
+            evaluation.extend([
+                "",
+                "RATING SCALE:",
+                "9.0 – 10.0: Excellent",
+                "8.0 – 8.9: Good", 
+                "6.5 – 7.9: Fair",
+                "5.0 – 6.4: Average",
+                "< 5.0: Poor / Weak",
+                "=========================================="
+            ])
+            
+            # Send as multiple messages if too long
+            full_evaluation = "\n".join(evaluation)
+            if len(full_evaluation) > 4000:
+                # Send summary first
+                await cl.Message(content=eval_data.evaluation_summary).send()
+                # Send detailed scores
+                detailed_part = "\n".join(evaluation[8:])  # Skip the header
+                await cl.Message(content=f"```\n{detailed_part}\n```").send()
+            else:
+                await cl.Message(content=f"```\n{full_evaluation}\n```").send()
+                
+        else:
+            await cl.Message(content="No multi-judge evaluation available for last response.").send()
+    else:
+        await cl.Message(content="No responses to evaluate yet.").send()
+
+@cl.action_callback("show_judge_details")
+async def on_action_show_judge_details(action: cl.Action):
+    """Action to show detailed information about each judge model"""
+    judge_info = [
+        "=== JUDGE MODELS INFORMATION ===",
+        "",
+        "🧠 llama3.1_8b: Meta's Llama 3.1 8B model - Balanced reasoning and accuracy",
+        "   Strengths: General knowledge, reasoning, balanced evaluation",
+        "",
+        "🧠 mixtral_8x7b: Mixtral 8x7B MoE model - Expert-level evaluation",
+        "   Strengths: Technical accuracy, comprehensive analysis",
+        "",
+        "🧠 qwen2_7b: Qwen2 7B model - Multilingual capability",
+        "   Strengths: Language understanding, contextual analysis", 
+        "",
+        "🧠 gemma2_9b: Google's Gemma2 9B model - Modern evaluation",
+        "   Strengths: Latest knowledge, nuanced understanding",
+        "",
+        "EVALUATION CRITERIA:",
+        "• Faithfulness: Reliance on context without hallucination",
+        "• Groundedness: Information traceable to context",
+        "• Factual Consistency: Accuracy compared to context", 
+        "• Relevance: Addresses the specific query",
+        "• Completeness: Covers all important aspects",
+        "• Fluency: Natural, coherent language",
+        "",
+        "SCALE: 0.0 - 10.0 (No averaging between judges)",
+        "=========================================="
+    ]
+    
+    await cl.Message(content="\n".join(judge_info)).send()
 
 if __name__ == "__main__":
-    os.makedirs(METRICS_DIR, exist_ok = True)
-    os.makedirs(os.path.dirname(CHAT_STORE_PATH), exist_ok = True)
+    os.makedirs(METRICS_DIR, exist_ok=True)
     
-    print("=== MULTI-MODEL CHATBOT WITH EVALUATION ===")
-    print("Available Chatbot Models:")
-    for model in CHATBOT_MODELS:
-        print(f"  • {model}")
-    
-    print("\nAvailable Judge Models:")
-    for model in JUDGE_MODELS_AVAILABLE:
-        print(f"  • {model}")
-    
-    print(f"\nDefault Chatbot Model: {DEFAULT_CHATBOT_MODEL}")
-    print(f"Chat History Storage: {CHAT_STORE_PATH}")
+    print("=== DETAILED MULTI-JUDGE EVALUATION SYSTEM ===")
+    print(f"Main Model: {llm.model}")
+    print(f"Judge Models: {', '.join(judge_models.keys())}")
     print("Evaluation Scale: 0.0 - 10.0")
-    print("Available commands: /show_models, /switch_model, /show_metrics, /evaluate_last")
+    print("Rating Categories: Excellent, Good, Fair, Average, Poor/Weak")
+    print("Available actions: show_metrics, save_metrics, evaluate_last, show_judge_details")
     print("========================================")
