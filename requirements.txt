@@ -3,4 +3,9 @@ ollama
 llama-index
 sentence-transformers
 llama-index-llms-ollama
-llama_index.embeddings.huggingface
+llama-index-embeddings-huggingface
+llama-index-vector-stores-faiss
+faiss-cpu
+tqdm
+nest_asyncio
+numpy
