@@ -177,45 +177,89 @@ class QuantitativeAnalyzer:
         }
     
     def measure_memory_usage(self) -> Dict[str, float]:
-        """Measure current memory usage (RAM and GPU) - BERTScore uses CPU only"""
+        """Measure current memory usage (RAM and GPU) and identify GPU processes"""
         # RAM usage (includes everything)
         ram_usage = self.process.memory_info().rss / 1024 / 1024  # MB
         
-        # GPU usage (excludes BERTScore since it's forced to CPU)
+        # GPU usage - track both total and process-specific
         gpu_usage = 0.0
         gpu_backend = "none"
+        gpu_processes = []
         
-        # Method 1: Try PyTorch first (most accurate for current process)
         try:
-            import torch
-            if torch.cuda.is_available():
-                # Get current GPU memory allocated to this process
-                gpu_usage = torch.cuda.memory_allocated() / 1024 / 1024  # MB
-                gpu_backend = "pytorch"
-                print(f"📊 GPU Memory (PyTorch): {gpu_usage:.1f} MB")
-        except ImportError:
-            pass
-        
-        # Method 2: If PyTorch shows zero but GPU might be used by other backends, try nvidia-smi
-        if gpu_usage == 0:
-            try:
-                import subprocess
-                # Get total GPU memory used across all processes
-                result = subprocess.check_output([
-                    'nvidia-smi', '--query-gpu=memory.used', 
-                    '--format=csv,nounits,noheader'
-                ], encoding='utf-8')
-                total_gpu_usage = float(result.strip().split('\n')[0])
-                gpu_usage = total_gpu_usage
+            import subprocess
+            
+            # Get total GPU memory used
+            total_result = subprocess.check_output([
+                'nvidia-smi', '--query-gpu=memory.used,memory.total', 
+                '--format=csv,nounits,noheader'
+            ], encoding='utf-8')
+            total_used, total_memory = map(float, total_result.strip().split(', '))
+            
+            # Get detailed process information
+            process_result = subprocess.check_output([
+                'nvidia-smi', '--query-compute-apps=pid,process_name,used_memory', 
+                '--format=csv,nounits,noheader'
+            ], encoding='utf-8')
+            
+            current_pid = self.process.pid
+            total_process_memory = 0.0
+            
+            for line in process_result.strip().split('\n'):
+                if line and ',' in line:
+                    parts = line.split(', ')
+                    if len(parts) >= 3:
+                        try:
+                            pid = int(parts[0])
+                            process_name = parts[1]
+                            memory = float(parts[2])
+                            
+                            # Track all GPU processes
+                            gpu_processes.append({
+                                'pid': pid,
+                                'name': process_name,
+                                'memory_mb': memory,
+                                'is_current_process': pid == current_pid
+                            })
+                            
+                            total_process_memory += memory
+                            
+                            # If this is our process, track its memory
+                            if pid == current_pid:
+                                gpu_usage = memory
+                                gpu_backend = "nvidia-smi-process"
+                        except (ValueError, IndexError):
+                            continue
+            
+            # If we didn't find our specific process, use the total GPU usage
+            if gpu_usage == 0:
+                gpu_usage = total_used
                 gpu_backend = "nvidia-smi-total"
-                print(f"📊 GPU Memory (nvidia-smi total): {gpu_usage:.1f} MB")
-            except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError):
-                pass
+            
+            # Print detailed GPU usage report
+            print(f"📊 GPU Memory Report:")
+            print(f"   Total GPU Memory: {total_memory:.0f} MB")
+            print(f"   Total Used: {total_used:.0f} MB ({total_used/total_memory*100:.1f}%)")
+            print(f"   Our Process Usage: {gpu_usage:.0f} MB")
+            print(f"   Total Process Memory: {total_process_memory:.0f} MB")
+            
+            if gpu_processes:
+                print(f"   Active GPU Processes:")
+                for proc in gpu_processes:
+                    marker = "👉" if proc['is_current_process'] else "  "
+                    print(f"   {marker} {proc['name']} (PID: {proc['pid']}): {proc['memory_mb']:.0f} MB")
+            else:
+                print(f"   No GPU processes detected")
+                
+        except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError) as e:
+            print(f"❌ nvidia-smi not available: {e}")
+            gpu_backend = "unavailable"
         
         return {
             "memory_used_mb": round(ram_usage, 1),
             "gpu_memory_used_mb": round(gpu_usage, 1),
-            "gpu_backend_detected": gpu_backend
+            "gpu_backend_detected": gpu_backend,
+            "gpu_processes": gpu_processes  # Include process details in metrics
         }
     
     def calculate_tokens_per_second(self, token_count: int, generation_time: float) -> float:
@@ -231,15 +275,15 @@ class QuantitativeAnalyzer:
         return set(tokens)
     
     def create_comprehensive_metrics(self, 
-                                  query: str,
-                                  response: str, 
-                                  context_chunks: List[str],
-                                  retrieval_confidence: float,
-                                  start_time: float,
-                                  token_count: int,
-                                  retrieval_time: float = None,
-                                  generation_time: float = None,
-                                  evaluation_time: float = None) -> Dict[str, Any]:
+                              query: str,
+                              response: str, 
+                              context_chunks: List[str],
+                              retrieval_confidence: float,
+                              start_time: float,
+                              token_count: int,
+                              retrieval_time: float = None,
+                              generation_time: float = None,
+                              evaluation_time: float = None) -> Dict[str, Any]:
         """Create comprehensive quantitative metrics with continuous error rate"""
         
         # Calculate accuracy using BERTScore (with CPU fallback)
@@ -262,6 +306,11 @@ class QuantitativeAnalyzer:
         )
         
         tokens_per_second = self.calculate_tokens_per_second(token_count, latency_metrics["generation_latency"])
+        
+        # Get GPU process count
+        gpu_process_count = "0"
+        if 'gpu_processes' in memory_metrics and memory_metrics['gpu_processes']:
+            gpu_process_count = str(len(memory_metrics['gpu_processes']))
         
         # Format all metrics
         return {
@@ -286,7 +335,8 @@ class QuantitativeAnalyzer:
             # Memory usage
             "ram_usage": f"{memory_metrics['memory_used_mb']:.0f} MB",
             "gpu_memory_usage": f"{memory_metrics['gpu_memory_used_mb']:.0f} MB",
-            "gpu_backend": memory_metrics['gpu_backend_detected'],  # ✅ Now this field exists
+            "gpu_backend": memory_metrics['gpu_backend_detected'],
+            "gpu_active_processes": gpu_process_count,  # ✅ Now this field exists
             
             # Performance metrics
             "tokens_generated": f"{token_count}",
