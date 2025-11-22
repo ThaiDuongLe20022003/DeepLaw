@@ -177,16 +177,45 @@ class QuantitativeAnalyzer:
         }
     
     def measure_memory_usage(self) -> Dict[str, float]:
-        """Measure current memory usage (RAM and GPU)"""
-        # RAM usage
+        """Measure current memory usage (RAM and GPU) - BERTScore uses CPU only"""
+        # RAM usage (includes everything)
         ram_usage = self.process.memory_info().rss / 1024 / 1024  # MB
         
-        # GPU usage 
+        # GPU usage (excludes BERTScore since it's forced to CPU)
         gpu_usage = 0.0
+        gpu_backend = "none"
+        
+        # Method 1: Try PyTorch first (most accurate for current process)
+        try:
+            import torch
+            if torch.cuda.is_available():
+                # Get current GPU memory allocated to this process
+                gpu_usage = torch.cuda.memory_allocated() / 1024 / 1024  # MB
+                gpu_backend = "pytorch"
+                print(f"📊 GPU Memory (PyTorch): {gpu_usage:.1f} MB")
+        except ImportError:
+            pass
+        
+        # Method 2: If PyTorch shows zero but GPU might be used by other backends, try nvidia-smi
+        if gpu_usage == 0:
+            try:
+                import subprocess
+                # Get total GPU memory used across all processes
+                result = subprocess.check_output([
+                    'nvidia-smi', '--query-gpu=memory.used', 
+                    '--format=csv,nounits,noheader'
+                ], encoding='utf-8')
+                total_gpu_usage = float(result.strip().split('\n')[0])
+                gpu_usage = total_gpu_usage
+                gpu_backend = "nvidia-smi-total"
+                print(f"📊 GPU Memory (nvidia-smi total): {gpu_usage:.1f} MB")
+            except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError):
+                pass
         
         return {
-            "memory_used_mb": ram_usage,
-            "gpu_memory_used_mb": gpu_usage
+            "memory_used_mb": round(ram_usage, 1),
+            "gpu_memory_used_mb": round(gpu_usage, 1),
+            "gpu_backend_detected": gpu_backend
         }
     
     def calculate_tokens_per_second(self, token_count: int, generation_time: float) -> float:
@@ -257,6 +286,7 @@ class QuantitativeAnalyzer:
             # Memory usage
             "ram_usage": f"{memory_metrics['memory_used_mb']:.0f} MB",
             "gpu_memory_usage": f"{memory_metrics['gpu_memory_used_mb']:.0f} MB",
+            "gpu_backend": memory_metrics['gpu_backend_detected'],  # ✅ Now this field exists
             
             # Performance metrics
             "tokens_generated": f"{token_count}",

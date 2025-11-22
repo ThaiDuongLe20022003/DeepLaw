@@ -26,6 +26,7 @@ class QuantitativeMetrics:
     # Memory usage 
     ram_usage: str
     gpu_memory_usage: str
+    gpu_backend: str  # ✅ ADD THIS NEW FIELD
     
     # Error rate 
     error_rate: str
