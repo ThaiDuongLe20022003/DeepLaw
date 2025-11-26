@@ -181,20 +181,22 @@ class QuantitativeAnalyzer:
         # RAM usage (includes everything)
         ram_usage = self.process.memory_info().rss / 1024 / 1024  # MB
         
-        # GPU usage - track both total and process-specific
+        # GPU usage - track memory, utilization, and processes
         gpu_usage = 0.0
+        gpu_utilization = 0.0
         gpu_backend = "none"
         gpu_processes = []
         
         try:
             import subprocess
             
-            # Get total GPU memory used
-            total_result = subprocess.check_output([
-                'nvidia-smi', '--query-gpu=memory.used,memory.total', 
+            # Get comprehensive GPU info
+            gpu_result = subprocess.check_output([
+                'nvidia-smi', '--query-gpu=memory.used,memory.total,utilization.gpu', 
                 '--format=csv,nounits,noheader'
             ], encoding='utf-8')
-            total_used, total_memory = map(float, total_result.strip().split(', '))
+            
+            total_used, total_memory, utilization = map(float, gpu_result.strip().split(', '))
             
             # Get detailed process information
             process_result = subprocess.check_output([
@@ -236,10 +238,13 @@ class QuantitativeAnalyzer:
                 gpu_usage = total_used
                 gpu_backend = "nvidia-smi-total"
             
+            gpu_utilization = utilization
+            
             # Print detailed GPU usage report
-            print(f"📊 GPU Memory Report:")
+            print(f"📊 GPU Activity Report:")
             print(f"   Total GPU Memory: {total_memory:.0f} MB")
             print(f"   Total Used: {total_used:.0f} MB ({total_used/total_memory*100:.1f}%)")
+            print(f"   GPU Utilization: {gpu_utilization:.1f}%")
             print(f"   Our Process Usage: {gpu_usage:.0f} MB")
             print(f"   Total Process Memory: {total_process_memory:.0f} MB")
             
@@ -254,12 +259,14 @@ class QuantitativeAnalyzer:
         except (subprocess.CalledProcessError, FileNotFoundError, IndexError, ValueError) as e:
             print(f"❌ nvidia-smi not available: {e}")
             gpu_backend = "unavailable"
+            gpu_utilization = 0.0
         
         return {
             "memory_used_mb": round(ram_usage, 1),
             "gpu_memory_used_mb": round(gpu_usage, 1),
+            "gpu_utilization_percent": round(gpu_utilization, 1),
             "gpu_backend_detected": gpu_backend,
-            "gpu_processes": gpu_processes  # Include process details in metrics
+            "gpu_processes": gpu_processes
         }
     
     def calculate_tokens_per_second(self, token_count: int, generation_time: float) -> float:
@@ -335,8 +342,9 @@ class QuantitativeAnalyzer:
             # Memory usage
             "ram_usage": f"{memory_metrics['memory_used_mb']:.0f} MB",
             "gpu_memory_usage": f"{memory_metrics['gpu_memory_used_mb']:.0f} MB",
+            "gpu_utilization": f"{memory_metrics['gpu_utilization_percent']:.1f} %",  # ← ADD THIS LINE HERE
             "gpu_backend": memory_metrics['gpu_backend_detected'],
-            "gpu_active_processes": gpu_process_count,  # ✅ Now this field exists
+            "gpu_active_processes": gpu_process_count,
             
             # Performance metrics
             "tokens_generated": f"{token_count}",

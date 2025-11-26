@@ -26,6 +26,7 @@ class QuantitativeMetrics:
     # Memory usage 
     ram_usage: str
     gpu_memory_usage: str
+    gpu_utilization: str  # ADD THIS
     gpu_backend: str
     
     # Error rate 
@@ -43,8 +44,8 @@ class QuantitativeMetrics:
     bertscore_available: str
     bertscore_initialized: str
     
-    # GPU processes info - ADD THIS
-    gpu_active_processes: str = "0"  # Default to "0" if not available
+    # GPU processes info
+    gpu_active_processes: str = "0"
 
 
 @dataclass
