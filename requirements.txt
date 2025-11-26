@@ -20,3 +20,8 @@ psutil
 gputil
 pandas
 numpy
+qdrant-client
+langchain-qdrant
+fastembed
+llama-parse
+llama-index
