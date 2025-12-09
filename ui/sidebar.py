@@ -15,7 +15,7 @@ def render_sidebar(available_models, selected_model, metrics_collector):
     st.header("⚙️ Configuration")
 
     # Add document link here
-    st.markdown("[📄 Find legal documents to upload here](https://github.com/ThaiDuongLe20022003/Thesis/tree/main/Law%20Data)")
+    st.markdown("[📄 Find legal documents to upload here](https://github.com/ThaiDuongLe20022003/DeepLaw/tree/main/Law%20Data)")
     
     # Model selection for response only
     if available_models:
@@ -141,29 +141,109 @@ def render_saved_metrics_section():
 
 
 def render_metrics_summary(metrics_collector):
-    """Render current session metrics summary"""
-    if metrics_collector.current_session_metrics:
-        st.subheader("📈 Current Session Summary")
-        summary = metrics_collector.get_session_summary()
+    """Render current session metrics summary with charts"""
+    if not metrics_collector.current_session_metrics:
+        st.info("No metrics collected yet. Ask some questions to see analytics.")
+        return
+    
+    summary = metrics_collector.get_session_summary()
+    
+    if not summary:
+        return
+    
+    st.subheader("📈 Current Session Summary")
+    
+    # Top metrics in columns
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Interactions", summary["total_interactions"])
+        st.metric("Total Evaluations", summary["total_evaluations"])
+    
+    with col2:
+        st.metric("Avg Response Time", f"{summary['avg_response_time']}s")
+        if "avg_overall_score" in summary:
+            st.metric("Overall Quality", f"{summary['avg_overall_score']}/10.0")
+    
+    with col3:
+        st.metric("Total Tokens", summary["total_tokens_generated"])
+        st.metric("Avg Tokens/s", f"{summary['avg_tokens_per_second']:.1f}")
+    
+    # Charts section
+    st.subheader("📊 Quality Evaluation")
+    
+    # 1. Rating Distribution Chart (existing)
+    if "rating_distribution" in summary:
+        st.write("**Rating Distribution**")
+        rating_data = summary["rating_distribution"]
         
-        if summary:
-            col1, col2, col3 = st.columns(3)
+        # Convert to proper format for bar chart
+        rating_chart_data = {
+            "Rating": list(rating_data.keys()),
+            "Count": list(rating_data.values())
+        }
+        
+        # Display as bar chart
+        st.bar_chart(rating_chart_data, x = "Rating", y = "Count", height = 200)
+    
+    # 2. NEW: Evaluation Metrics Bar Chart
+    if all(key in summary for key in [
+        'avg_faithfulness', 'avg_groundedness', 'avg_factual_consistency',
+        'avg_relevance', 'avg_completeness', 'avg_fluency'
+    ]):
+        st.write("**Evaluation Metrics (Average Scores)**")
+        
+        # Prepare data for the bar chart
+        metrics_data = {
+            "Metric": [
+                "Fluency",
+                "Relevance", 
+                "Factual Consistency",
+                "Groundedness",
+                "Faithfulness",
+                "Completeness"
+            ],
+            "Score": [
+                summary['avg_fluency'],
+                summary['avg_relevance'],
+                summary['avg_factual_consistency'],
+                summary['avg_groundedness'],
+                summary['avg_faithfulness'],
+                summary['avg_completeness']
+            ]
+        }
+        
+        # Create DataFrame for better sorting
+        import pandas as pd
+        df = pd.DataFrame(metrics_data)
+        
+        # Sort by score (descending)
+        df = df.sort_values("Score", ascending = True)
+        
+        # Display bar chart
+        st.bar_chart(df, x = "Metric", y = "Score", height = 300)
+        
+        # Optional: Add color coding explanation
+        with st.expander("📋 Scoring Guidelines"):
+            st.write("""
+            **Scoring Scale (0-10):**
+            - **9.0-10.0**: Excellent
+            - **8.0-8.9**: Good
+            - **6.5-7.9**: Fair  
+            - **5.0-6.4**: Average
+            - **<5.0**: Poor/Weak
             
-            with col1:
-                st.metric("Total Interactions", summary["total_interactions"])
-                st.metric("Total Evaluations", summary["total_evaluations"])
-            
-            with col2:
-                st.metric("Avg Response Time", f"{summary['avg_response_time']}s")
-                if "avg_overall_score" in summary:
-                    st.metric("Overall Quality", f"{summary['avg_overall_score']}/10.0")
-            
-            with col3:
-                st.metric("Total Tokens", summary["total_tokens_generated"])
-                st.metric("Avg Tokens/s", f"{summary['avg_tokens_per_second']:.1f}")
-                
-            # Display rating distribution as a bar chart
-            if "rating_distribution" in summary:
-                st.subheader("Rating Distribution")
-                rating_data = summary["rating_distribution"]
-                st.bar_chart(rating_data)
+            **Metrics Explained:**
+            - **Faithfulness**: Reliance on provided context without hallucination
+            - **Groundedness**: Traceability to source material
+            - **Factual Consistency**: Accuracy compared to context
+            - **Relevance**: How well response addresses the query
+            - **Completeness**: Coverage of all important aspects
+            - **Fluency**: Natural, coherent language
+            """)
+    
+    # 3. Optional: Judge Models Comparison
+    if "judge_models" in summary:
+        st.write("**Evaluation by Judge Model**")
+        for judge, stats in summary["judge_models"].items():
+            st.caption(f"**{judge}**: {stats['avg_score']}/10.0 ({stats['count']} evaluations)")
