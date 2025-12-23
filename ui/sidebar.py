@@ -77,16 +77,6 @@ def render_sidebar(available_models, selected_model, metrics_collector):
         report = metrics_collector.generate_report()
         st.text_area("Evaluation Report", report, height = 300)
     
-    if st.button("Save All Metrics to File"):
-        if metrics_collector.current_session_metrics:
-            filename = metrics_collector.save_all_metrics_to_file()
-            if filename:
-                st.success(f"All metrics saved to: {filename}")
-            else:
-                st.error("Failed to save metrics.")
-        else:
-            st.warning("No metrics to save.")
-    
     if st.button("Clear Metrics"):
         metrics_collector.current_session_metrics = []
         st.success("Metrics cleared.")
