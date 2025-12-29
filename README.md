@@ -40,25 +40,25 @@ A sophisticated legal document analysis system featuring horizontal multi-agent 
 ### Installation
 
 1. **Clone the repository**
-```bash```
+```bash
 git clone https://github.com/yourusername/deeplaw-rag.git
 cd deeplaw-rag
-
+```
 2. **Create virtual environment**
-```bash```
+```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
+```
 3. **Install dependencies**
-```bash```
+```bash
 pip install -r requirements.txt
-
+```
 4. **Pull Ollama models (choose at least one)**
-```bash```
+```bash
 ollama pull llama3.2
 ollama pull mistral
-# Additional models for evaluation: ollama pull llama3.1, ollama pull gemma:2b
-
+```
 5. **Run the application**
-```bash```
+```bash
 streamlit run main.py
+```
