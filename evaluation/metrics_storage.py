@@ -96,7 +96,7 @@ class MetricsStorage:
                         def _g(k, o = eval_obj):
                             return getattr(o, k, None)
 
-                    def _safe_float(v, default=0.0):
+                    def _safe_float(v, default = 0.0):
                         try:
                             return float(v)
                         except Exception:

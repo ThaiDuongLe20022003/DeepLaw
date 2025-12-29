@@ -5,6 +5,7 @@ Sidebar components and configuration for the Streamlit application.
 import os
 import json
 import streamlit as st
+import pandas as pd
 
 from evaluation.evaluator import LLMJudgeEvaluator
 from config.settings import METRICS_DIR
@@ -12,10 +13,10 @@ from config.settings import METRICS_DIR
 
 def render_sidebar(available_models, selected_model, metrics_collector):
     """Render the sidebar with configuration options"""
-    st.header("⚙️ Configuration")
+    st.header("Configuration")
 
     # Add document link here
-    st.markdown("[📄 Find legal documents to upload here](https://github.com/ThaiDuongLe20022003/DeepLaw/tree/main/Law%20Data)")
+    st.markdown("[Find legal documents to upload here](https://github.com/ThaiDuongLe20022003/DeepLaw/tree/main/Law%20Data)")
     
     # Model selection for response only
     if available_models:
@@ -33,7 +34,7 @@ def render_sidebar(available_models, selected_model, metrics_collector):
     judge_models = [model for model in available_models if model != selected_model]
     
     # Display judge models info
-    st.header("👨‍⚖️ Judge Models")
+    st.header("Judge Models")
     if judge_models:
         st.write(f"**{len(judge_models)} models** will evaluate each response:")
         for model in judge_models:
@@ -71,7 +72,7 @@ def render_sidebar(available_models, selected_model, metrics_collector):
             del st.session_state["current_judge_models"]
     
     # Metrics actions
-    st.header("📊 Evaluation Metrics")
+    st.header("Evaluation Metrics")
     
     if st.button("Show Evaluation Report"):
         report = metrics_collector.generate_report()
@@ -89,7 +90,7 @@ def render_sidebar(available_models, selected_model, metrics_collector):
 
 def render_saved_metrics_section():
     """Render the saved evaluation files section"""
-    st.header("📁 Saved Evaluation Files")
+    st.header("Saved Evaluation Files")
     
     # Show list of evaluation files
     evaluation_files = []
@@ -141,7 +142,7 @@ def render_metrics_summary(metrics_collector):
     if not summary:
         return
     
-    st.subheader("📈 Current Session Summary")
+    st.subheader("Current Session Summary")
     
     # Top metrics in columns
     col1, col2, col3 = st.columns(3)
@@ -160,7 +161,7 @@ def render_metrics_summary(metrics_collector):
         st.metric("Avg Tokens/s", f"{summary['avg_tokens_per_second']:.1f}")
     
     # Charts section
-    st.subheader("📊 Quality Evaluation")
+    st.subheader("Quality Evaluation")
     
     # 1. Rating Distribution Chart (existing)
     if "rating_distribution" in summary:
@@ -204,7 +205,6 @@ def render_metrics_summary(metrics_collector):
         }
         
         # Create DataFrame for better sorting
-        import pandas as pd
         df = pd.DataFrame(metrics_data)
         
         # Sort by score (descending)
@@ -214,7 +214,7 @@ def render_metrics_summary(metrics_collector):
         st.bar_chart(df, x = "Metric", y = "Score", height = 300)
         
         # Optional: Add color coding explanation
-        with st.expander("📋 Scoring Guidelines"):
+        with st.expander("Scoring Guidelines"):
             st.write("""
             **Scoring Scale (0-10):**
             - **9.0-10.0**: Excellent

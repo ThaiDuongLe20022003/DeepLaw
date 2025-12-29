@@ -45,7 +45,7 @@ def main():
         st.session_state["selected_model"] = selected_model
         st.session_state["evaluation_enabled"] = evaluation_enabled
         
-        # ✅ Store judge_evaluator in session state if it exists
+        # Store judge_evaluator in session state if it exists
         if judge_evaluator is not None:
             st.session_state["judge_evaluator"] = judge_evaluator
         elif not evaluation_enabled and "judge_evaluator" in st.session_state:
@@ -57,7 +57,7 @@ def main():
     
     # Main content - PDF upload and viewer
     with col1:
-        st.subheader("📁 Document Management")
+        st.subheader("Document Management")
         file_upload = render_pdf_uploader()
         handle_pdf_upload(file_upload)
         render_pdf_viewer()
@@ -65,12 +65,12 @@ def main():
     
     # Main content - Chat interface
     with col2:
-        st.subheader("💬 Legal Document Chat")
+        st.subheader("Legal Document Chat")
         render_chat_interface(
             st.session_state["vector_db"],
             st.session_state["selected_model"],
             st.session_state["evaluation_enabled"],
-            st.session_state.get("judge_evaluator"),  # ✅ Get from session state
+            st.session_state.get("judge_evaluator"),  # Get from session state
             st.session_state["metrics_collector"]
         )
 

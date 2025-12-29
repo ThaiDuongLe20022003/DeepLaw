@@ -38,7 +38,7 @@ def display_chat_history(message_container):
                         return 0.0
 
                 avg_score = sum(_safe_f(ev) for ev in message.evaluations) / len(message.evaluations)
-                st.caption(f"📊 Average Evaluation: {avg_score:.1f}/10.0 ({len(message.evaluations)} judges)")
+                st.caption(f"Average Evaluation: {avg_score:.1f}/10.0 ({len(message.evaluations)} judges)")
             
             # Show quantitative metrics if available
             if message.quantitative_metrics:

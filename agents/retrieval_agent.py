@@ -53,7 +53,7 @@ class DataRetrievalAgent(BaseAgent):
                 "retrieval_confidence": confidence,
                 "context": formatted_context,
                 "needs_legal_analysis": confidence < self.confidence_threshold,
-                "raw_documents": [doc.page_content + "..." for doc in context_docs]  # For debugging
+                "raw_documents": [doc.page_content + "..." for doc in context_docs]  
             }
             
             self.update_shared_context("retrieval_result", result)

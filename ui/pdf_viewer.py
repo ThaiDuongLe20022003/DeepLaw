@@ -29,7 +29,7 @@ def handle_pdf_upload(file_upload):
         )
         
         if is_new_file:
-            with st.spinner(f"🔄 Processing new PDF: {file_upload.name}..."):
+            with st.spinner(f"Processing new PDF: {file_upload.name}..."):
                 try:
                     # Clear previous state if exists
                     if st.session_state["vector_db"] is not None:
@@ -54,29 +54,29 @@ def handle_pdf_upload(file_upload):
                     if "metrics_collector" in st.session_state:
                         st.session_state.metrics_collector.current_session_metrics = []
                     
-                    st.success(f"✅ Successfully processed: {file_upload.name}")
+                    st.success(f"Successfully processed: {file_upload.name}")
                     st.balloons()
                     
                     # Force rerun to refresh the UI
                     st.rerun()
                     
                 except Exception as e:
-                    st.error(f"❌ Error processing PDF: {str(e)}")
+                    st.error(f"Error processing PDF: {str(e)}")
                     st.session_state["file_processed"] = False
         else:
             st.info(f"📄 Using previously processed file: {file_upload.name}")
     else:
         # No file uploaded
         if st.session_state.get("current_file_name"):
-            st.info(f"📁 Current document: {st.session_state['current_file_name']}")
+            st.info(f"Current document: {st.session_state['current_file_name']}")
         else:
-            st.info("📁 Please upload a PDF document to begin.")
+            st.info("Please upload a PDF document to begin.")
 
 
 def render_pdf_viewer():
     """Render PDF viewer with zoom controls"""
     if "pdf_pages" in st.session_state and st.session_state["pdf_pages"]:
-        st.write(f"📑 **Document:** {st.session_state.get('current_file_name', 'Unknown')}")
+        st.write(f" **Document:** {st.session_state.get('current_file_name', 'Unknown')}")
         
         zoom_level = st.slider(
             "Zoom Level", 
@@ -95,7 +95,7 @@ def render_pdf_viewer():
 def render_delete_button():
     """Render delete collection button"""
     delete_collection = st.button(
-        "⚠️ Delete collection & Clear Chat", 
+        "Delete collection & Clear Chat", 
         type = "secondary",
         key = "delete_button",
         help = "Remove current document and start fresh"
